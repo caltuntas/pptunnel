@@ -22,6 +22,13 @@
 #define V2_AF_INET 0x1
 #define V2_TRANSPORT_STREAM 0x1
 
+struct Config { 
+  char *source_address;
+  char *destination_address;
+  char *source_port;
+  char *destination_port;
+};
+
 char *remote_host;
 char *remote_port;
 struct header {
@@ -74,7 +81,34 @@ void init_hdr_v2(struct header *hdr) {
   hdr->hdr_v2.len = 12;
 }
 
+void parse_arguments(int argc, char *argv[], struct Config *cfg) {
+    int ch;
+    while( (ch = getopt(argc,argv,"s:d:p:P:")) != -1 ) {
+        printf("%c %s\n", ch, optarg);
+        switch(ch) {
+          case 's': 
+            cfg->source_address = optarg;
+            break;
+          case 'd': 
+            cfg->destination_address = optarg;
+            break;
+          case 'p': 
+            cfg->source_port = optarg;
+            break;
+          case 'P': 
+            cfg->destination_port = optarg;
+            break;
+          default:
+            printf ("?? getopt returned character code 0%o ??\n", ch);
+        }
+    }
+}
+
 int main(int argc, char *argv[]){
+  struct Config cfg;
+  memset(&cfg, 0, sizeof cfg);
+
+  parse_arguments(argc,argv,&cfg);
   int sockfd, new_fd, remote_fd;
   struct addrinfo hints, *servinfo, *p;
   struct sockaddr_storage their_addr;
@@ -170,12 +204,12 @@ int main(int argc, char *argv[]){
     unsigned char buf[sizeof(struct in_addr)];
     struct sockaddr_in sa_src;
     struct sockaddr_in sa_dst;
-    inet_pton(AF_INET, "192.168.100.101", &(sa_src.sin_addr));
-    inet_pton(AF_INET, "192.168.100.105", &(sa_dst.sin_addr));
+    inet_pton(AF_INET, cfg.source_address, &(sa_src.sin_addr));
+    inet_pton(AF_INET, cfg.destination_address, &(sa_dst.sin_addr));
     hdr.src = sa_src.sin_addr.s_addr;
     hdr.dst = sa_dst.sin_addr.s_addr;
-    hdr.src_port = 1234;
-    hdr.dst_port = 4567;
+    hdr.src_port = atoi(cfg.source_port);
+    hdr.dst_port = atoi(cfg.destination_port);
 
     uint8_t buffer[28], *ptr;
     init_hdr_v2(&hdr);
