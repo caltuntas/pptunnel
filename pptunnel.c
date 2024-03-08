@@ -11,7 +11,6 @@
 #include <sys/wait.h>
 #include <signal.h>
 
-#define PORT "3490"
 #define BACKLOG 10
 #define BUF_SIZE 16
 #define BROKEN_PIPE_ERROR -9
@@ -27,10 +26,11 @@ struct Config {
   char *destination_address;
   char *source_port;
   char *destination_port;
+  char *remote_address;
+  char *remote_port;
+  char *port;
 };
 
-char *remote_host;
-char *remote_port;
 struct header {
   struct proxy_hdr_v2 {
     uint8_t sig[12];
@@ -44,7 +44,7 @@ struct header {
   uint16_t dst_port;
 };
 uint8_t * serialize_header(uint8_t *buffer, struct header *hdr) ;
-int create_remote_connection();
+int create_remote_connection(struct Config *cfg);
 void forward_data(int source_sock, int destination_sock);
 void sigchld_handler(int s) {
   int saved_errno = errno;
@@ -83,20 +83,29 @@ void init_hdr_v2(struct header *hdr) {
 
 void parse_arguments(int argc, char *argv[], struct Config *cfg) {
     int ch;
-    while( (ch = getopt(argc,argv,"s:d:p:P:")) != -1 ) {
+    while( (ch = getopt(argc,argv,"p:r:R:s:S:d:D:")) != -1 ) {
         printf("%c %s\n", ch, optarg);
         switch(ch) {
+          case 'p': 
+            cfg->port = optarg;
+            break;
           case 's': 
             cfg->source_address = optarg;
+            break;
+          case 'S': 
+            cfg->source_port = optarg;
             break;
           case 'd': 
             cfg->destination_address = optarg;
             break;
-          case 'p': 
-            cfg->source_port = optarg;
-            break;
-          case 'P': 
+          case 'D': 
             cfg->destination_port = optarg;
+            break;
+          case 'r': 
+            cfg->remote_address = optarg;
+            break;
+          case 'R': 
+            cfg->remote_port = optarg;
             break;
           default:
             printf ("?? getopt returned character code 0%o ??\n", ch);
@@ -118,22 +127,12 @@ int main(int argc, char *argv[]){
   char s[INET_ADDRSTRLEN];
   int rv;
 
-  if (argc !=3 ) {
-    fprintf(stderr, "usage: client hostname\n");
-    remote_host = "localhost";
-    remote_port = "5000";
-  } else {
-    remote_host = argv[1];
-    remote_port = argv[2];
-  }
-
-
   memset(&hints, 0 , sizeof hints);
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_PASSIVE;
 
-  if ((rv = getaddrinfo(NULL, PORT, &hints, &servinfo)) !=0) {
+  if ((rv = getaddrinfo(NULL, cfg.port, &hints, &servinfo)) !=0) {
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
     return 1;
   }
@@ -197,7 +196,7 @@ int main(int argc, char *argv[]){
 
 
     close(sockfd);
-    remote_fd = create_remote_connection();
+    remote_fd = create_remote_connection(&cfg);
     struct header hdr;
     memset(&hdr,0, sizeof hdr);
     //hdr.src = s_addr->s_addr;
@@ -251,7 +250,7 @@ void forward_data(int source_sock, int destination_sock) {
   close(source_sock);
 }
 
-int create_remote_connection() {
+int create_remote_connection(struct Config *cfg) {
   int sockfd, numbytes;
   struct addrinfo hints, *servinfo, *p;
   int rv;
@@ -261,7 +260,7 @@ int create_remote_connection() {
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
 
-  if ((rv = getaddrinfo(remote_host, remote_port, &hints, &servinfo)) != 0) {
+  if ((rv = getaddrinfo(cfg->remote_address, cfg->remote_port, &hints, &servinfo)) != 0) {
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
     return 1;
   }
